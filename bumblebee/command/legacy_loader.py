@@ -1,12 +1,16 @@
 
 import logging
 import os.path
-from pyutilib.component.core    import (Plugin, SingletonPlugin,
-                                        ExtensionPoint, implements)
-from pyutilib.component.config  import declare_option
+from pyutilib.component.core        import (Plugin, SingletonPlugin,
+                                            ExtensionPoint, implements)
+from pyutilib.component.config      import declare_option
+from bumblebee.command.interfaces   import (ICommandSetLoader, ICommandSet,
+                                            ICommandSetObserver)
 
-from .interface                 import (ICommandSetLoader, ICommandSet,
-                                        ICommandSetObserver)
+
+#===========================================================================
+
+log = logging.getLogger(__name__)
 
 
 #===========================================================================
@@ -14,9 +18,7 @@ from .interface                 import (ICommandSetLoader, ICommandSet,
 class LegacyDirectoryLoader(SingletonPlugin):
 
     implements(ICommandSetLoader)
-    declare_option("directories", section="legacy_loader")
-
-    _log = logging.getLogger("LegacyDirectoryLoader")
+    declare_option("directories", section="LegacyLoader")
 
     def __init__(self):
         self._modules = {}
@@ -28,7 +30,7 @@ class LegacyDirectoryLoader(SingletonPlugin):
         if self._directories_config == self.directories:
             return self._directories
 
-        self._log.info("Config option directories has changed:"
+        log.info("Config option directories has changed:"
                        " {0!r}".format(self.directories))
 
         directories = []
@@ -41,16 +43,16 @@ class LegacyDirectoryLoader(SingletonPlugin):
 
             directory = os.path.abspath(line)
             if not os.path.isdir(directory):
-                self._log.error("Not a directory: {0}".format(directory))
+                log.error("Not a directory: {0}".format(directory))
                 continue
 
             directories.append(directory)
 
         self._directories_config = self.directories
         self._directories = directories
-        self._log.debug("Loading command modules from these directories:")
+        log.debug("Loading command modules from these directories:")
         for directory in directories:
-            self._log.debug(" - {0}".format(directory))
+            log.debug(" - {0}".format(directory))
         return directories
 
     def update(self):
@@ -97,8 +99,6 @@ class CommandSetBase(Plugin):
     implements(ICommandSet)
     observers = ExtensionPoint(ICommandSetObserver)
 
-    _log = logging.getLogger("CommandSet")
-
     def after_load(self):
         for observer in self.observers:
             observer.loaded_command_set(self)
@@ -113,8 +113,6 @@ class CommandSetBase(Plugin):
 # Legacy command set class; wraps a single NatLink-style command-module.
 
 class LegacyCommandSet(CommandSetBase):
-
-    _log = logging.getLogger("LegacyCommandSet")
 
     def __init__(self, path):
         self._path = path
@@ -137,7 +135,7 @@ class LegacyCommandSet(CommandSetBase):
         return ()
 
     def load(self):
-        self._log.debug("Loading module {0}".format(self._path))
+        log.debug("Loading module {0}".format(self._path))
 
         # Prepare namespace in which to execute the command module.
         namespace = {}
@@ -147,7 +145,7 @@ class LegacyCommandSet(CommandSetBase):
         try:
             execfile(self._path, namespace)
         except Exception, e:
-            self._log.exception("Error loading module: {0}"
+            log.exception("Error loading module: {0}"
                                 "".format(e))
             self._loaded = False
             return
@@ -164,7 +162,7 @@ class LegacyCommandSet(CommandSetBase):
             self._namespace = None
             self._loaded = False
         else:
-            self._log.warning("No unload() function in legacy module"
+            log.warning("No unload() function in legacy module"
                               " {0}".format(self._short_path))
             self._namespace = None
             self._loaded = False

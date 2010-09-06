@@ -2,6 +2,7 @@
 import sys
 import logging
 import unittest
+import os
 import os.path
 import bumblebee.config
 from win32com.shell import shell, shellcon
@@ -36,9 +37,15 @@ class TestConfig(unittest.TestCase):
             config_path = self.config.get_config_path()
             self.assertEquals(system_path.lower(), config_path.lower())
 
-            # Only local config -> finds local config.
+            # Only local config, after having found system config
+            #  -> remembers system config.
             self._delete_config()
             open(local_path, "w").close()
+            config_path = self.config.get_config_path()
+            self.assertEquals(system_path.lower(), config_path.lower())
+
+            # Only local config -> finds local config.
+            self.config = bumblebee.config.Config()
             config_path = self.config.get_config_path()
             self.assertEquals(local_path.lower(), config_path.lower())
 
@@ -53,15 +60,64 @@ class TestConfig(unittest.TestCase):
     def test_load_returns_false_if_nonexistent(self):
         """ Verify that Config.load() returns False if file not found. """
         self._delete_config()
-        self.assertFalse(self.config.load_config())
+        self.assertFalse(self.config.load())
 
         # Verify that the first load hasn't changed anything.
-        self.assertFalse(self.config.load_config())
+        self.assertFalse(self.config.load())
 
-    def test_load_or_create_config(self):
-        """ Verify that Config.load_or_create_config() works. """
+        # Cleanup.
         self._delete_config()
-        self.config.load_or_create_config()
+
+    def test_load_or_create(self):
+        """ Verify that Config.load_or_create() works. """
+
+        # Remove any old config files.
+        self._delete_config()
+        self.assertFalse(os.path.exists(self._get_local_path()))
+        self.assertFalse(os.path.exists(self._get_system_path()))
+
+        # Verify that load_or_create() creates the system config.
+        self.config.load_or_create()
+        self.assertFalse(os.path.exists(self._get_local_path()))
+        self.assertTrue(os.path.exists(self._get_system_path()))
+
+        # Cleanup.
+        self._delete_config()
+
+    def test_reload_if_modified(self):
+        """ Verify that Config.reload_if_modified() works. """
+
+        # Remove any old config files.
+        self._delete_config()
+        self.assertFalse(os.path.exists(self._get_local_path()))
+        self.assertFalse(os.path.exists(self._get_system_path()))
+
+        # Verify that reload_if_modified() creates a new file.
+        reloaded = self.config.reload_if_modified()
+        self.assertTrue(reloaded)
+        self.assertFalse(os.path.exists(self._get_local_path()))
+        self.assertTrue(os.path.exists(self._get_system_path()))
+        config_path = self.config.get_config_path()
+        self.assertEquals(self._get_system_path(), config_path)
+
+        # Verify that reload_if_modified() doesn't reload if not modified.
+        reloaded = self.config.reload_if_modified()
+        self.assertFalse(reloaded)
+
+        # Verify that reload_if_modified() reloads if modified.
+        os.utime(config_path, None)
+        reloaded = self.config.reload_if_modified()
+        self.assertTrue(reloaded)
+
+        # Verify that reload_if_modified() deals with a deleted file.
+        self._delete_config()
+        reloaded = self.config.reload_if_modified()
+        self.assertTrue(reloaded)
+        self.assertFalse(os.path.exists(self._get_local_path()))
+        self.assertTrue(os.path.exists(self._get_system_path()))
+
+        # Cleanup.
+        self._delete_config()
 
     #-----------------------------------------------------------------------
     # Utility methods.
@@ -69,18 +125,23 @@ class TestConfig(unittest.TestCase):
     def _get_local_directory(self):
         return os.path.realpath(os.path.dirname(sys.argv[0]))
 
+    def _get_local_path(self):
+        return os.path.join(self._get_local_directory(), "Bumblebee.ini")
+
     def _get_system_directory(self):
         folder_id = shellcon.CSIDL_LOCAL_APPDATA
         appdata_directory = shell.SHGetFolderPath(0, folder_id, 0, 0)
         return os.path.join(appdata_directory, "Bumblebee")
 
+    def _get_system_path(self):
+        return os.path.join(self._get_system_directory(), "Bumblebee.ini")
+
     def _delete_config(self):
-        config_dirs = [
-                       self._get_local_directory(),
-                       self._get_system_directory(),
-                      ]
-        for config_dir in config_dirs:
-            config_path = os.path.join(config_dir, "Bumblebee.ini")
+        config_paths = [
+                        self._get_local_path(),
+                        self._get_system_path(),
+                       ]
+        for config_path in config_paths:
             try:
                 os.remove(config_path)
             except WindowsError, e:

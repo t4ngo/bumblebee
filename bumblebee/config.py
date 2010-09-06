@@ -2,14 +2,20 @@
 import sys
 import logging
 import os.path
-import pyutilib.component.core
-import pyutilib.component.config
-from win32com.shell             import shell, shellcon
+from pyutilib.component.core        import PluginGlobals, PluginEnvironment
+from pyutilib.component.config      import Configuration
+from win32com.shell                 import shell, shellcon
 
 
 #===========================================================================
 
 log = logging.getLogger(__name__)
+
+
+#===========================================================================
+
+class ConfigError(Exception):
+    pass
 
 
 #===========================================================================
@@ -20,8 +26,11 @@ class Config(object):
 
     """
 
+    _environment = None
+
     def __init__(self):
         self._found_config_path = None
+        self._load_time = None
 
     def get_config_path(self):
         """ Returns absolute path to configuration file. """
@@ -34,6 +43,7 @@ class Config(object):
         local_directory = os.path.realpath(os.path.dirname(sys.argv[0]))
         local_path = os.path.join(local_directory, "Bumblebee.ini")
         if os.path.isfile(local_path):
+            self._found_config_path = local_path
             return local_path
 
         # Second, look for a config file in the system local
@@ -42,17 +52,22 @@ class Config(object):
         system_directory = shell.SHGetFolderPath(0, folder_id, 0, 0)
         system_path = os.path.join(system_directory,
                                    "Bumblebee", "Bumblebee.ini")
+        self._found_config_path = system_path
         return system_path
 
-    def load_default_config(self):
+    def load_default(self):
         """ Loads a built-in, default configuration. """
         log.debug("Loading default config.")
-        env_name = "Bumblebee"
-        self._environment = pyutilib.component.core.PluginEnvironment(env_name)
-        pyutilib.component.core.PluginGlobals.push_env(self._environment)
-        self._config = pyutilib.component.config.Configuration()
+        self._create_environment()
+        self._config = Configuration()
 
-    def load_config(self):
+    def _create_environment(self):
+        if Config._environment == None:
+            env_name = "Bumblebee"
+            Config._environment = PluginEnvironment(env_name)
+            PluginGlobals.push_env(Config._environment)
+
+    def load(self):
         """
             Loads configuration from file, if the file is present.
 
@@ -76,18 +91,19 @@ class Config(object):
                               " {1}".format(path, e))
                 raise
 
-        env_name = "Bumblebee"
-        self._environment = pyutilib.component.core.PluginEnvironment(env_name)
-        pyutilib.component.core.PluginGlobals.push_env(self._environment)
-        self._config = pyutilib.component.config.Configuration()
+        self._create_environment()
+        self._config = Configuration()
         self._config.load(path)
+        self._load_time = os.path.getmtime(path)
 
         return True
 
-    def save_config(self):
+    def save(self):
         """ Saves current configuration to disk. """
         config_path = self._open_config_file_for_writing()
+        log.info("Saving config to {0}.".format(config_path))
         self._config.save(config_path)
+        self._load_time = os.path.getmtime(config_path)
 
     def _open_config_file_for_writing(self):
         """ Saves current configuration to disk. """
@@ -130,13 +146,42 @@ class Config(object):
                           " {1}".format(path, e))
             raise
 
-    def load_or_create_config(self):
+    def load_or_create(self):
         """
             Loads configuration from file, or creates it if not found.
 
         """
 
-        if self.load_config():
+        if self.load():
             return
-        self.load_default_config()
-        self.save_config()
+        self.load_default()
+        self.save()
+
+    def reload_if_modified(self):
+        """
+            Reloads configuration if its file has been modified.
+
+        """
+
+        if self._load_time == None:
+            self.load_or_create()
+            return True
+
+        # Check whether file has been modified since last load.
+        config_path = self.get_config_path()
+        try:
+            modified_time = os.path.getmtime(config_path)
+        except WindowsError, e:
+            if e.errno != 2:
+                raise
+        else:
+            if self._load_time == modified_time:
+                return False
+
+        # File has been modified since last load, so reload it.
+        self.load_or_create()
+#        if not self.load():
+#            raise ConfigError("Failed to open config file ({0}):"
+#                              " file not found."
+#                              "".format(self.get_config_path()))
+        return True

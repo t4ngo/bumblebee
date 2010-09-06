@@ -4,16 +4,18 @@ import logging
 import wx
 import dragonfly
 import pyutilib.component.core
-from pyutilib.component.core    import Plugin, implements
+from pyutilib.component.core        import Plugin, implements
+from bumblebee.command.interfaces   import ICommandSet, ICommandSetObserver
 
-from ..command.interface        import ICommandSet, ICommandSetObserver
+
+#===========================================================================
+
+log = logging.getLogger(__name__)
 
 
 #===========================================================================
 
 class GrammarPanel(wx.Panel):
-
-    _log = logging.getLogger("GrammarPanel")
 
     def __init__(self, parent, id):
         wx.Panel.__init__(self, parent, id)
@@ -29,15 +31,13 @@ class GrammarPanel(wx.Panel):
 
 class GrammarTree(wx.TreeCtrl):
 
-    _log = logging.getLogger("GrammarTree")
-
     def __init__(self, parent, id):
         wx.TreeCtrl.__init__(self, parent, id)
         self._command_sets = None
         GrammarTreeUpdater(self).update()
 
     def update(self, command_sets=None):
-        self._log.debug("update({0})".format(command_sets))
+        log.debug("update({0})".format(command_sets))
         if command_sets != None and self._command_sets == command_sets:
             # If nothing has changed, return immediately.
             return

@@ -8,7 +8,7 @@ class ICommandSet(Interface):
 
     def get_name_description(self):
         """
-            Return a (name, description) 2-tuple describing the command set.
+            Returns a (name, description) 2-tuple describing the command set.
 
             The name must be a short, single line string.  The description
             may span multiple lines.
@@ -17,17 +17,17 @@ class ICommandSet(Interface):
 
     def get_commands(self):
         """
-            Return a tuple of commands within this command set.
+            Returns a tuple of commands within this command set.
 
             Each command returned must implement that ICommand interface.
 
         """
 
     def load(self):
-        """ Load the command set. """
+        """ Loads the command set. """
 
     def unload(self):
-        """ Unload the command set. """
+        """ Unloads the command set. """
 
 
 #---------------------------------------------------------------------------
